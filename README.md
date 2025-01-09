@@ -1,91 +1,179 @@
-# Git-Backed Web Messaging Application
+# Git-Backed Chat Application
 
-A lightweight web-based messaging application that uses Git as a backend storage system. This application allows users to send and receive messages through a simple web interface while maintaining message history using Git commits.
+A real-time chat application that stores messages in both SQLite and GitHub repositories.
 
 ## Features
 
-- Simple web-based messaging interface
-- Git-backed message storage
-- SQLite database for user management
-- Real-time message updates
-- Message history with timestamps
-- Basic user authentication
+- Real-time messaging with web interface
+- Message persistence in SQLite database
+- Git-backed message storage across multiple repositories
+- Async message fetching from multiple sources
+- Clean and modern web interface
 
-## Tech Stack
+## Prerequisites
 
-- Backend: Python (No frameworks)
-- Database: SQLite
-- Frontend: HTML, CSS, JavaScript (Vanilla)
-- Version Control & Storage: Git (via GitHub API)
-- Server: Python's built-in HTTP server
+- Python 3.8 or higher
+- pip (Python package manager)
+- A GitHub account with a Personal Access Token
 
-## Project Structure
-
-```
-IAPchat/
-├── README.md
-├── .gitignore
-├── static/
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       └── main.js
-├── templates/
-│   ├── index.html
-│   └── login.html
-├── database/
-│   └── chat.db
-├── server.py
-├── database.py
-├── git_handler.py
-└── requirements.txt
-```
-
-## Setup Instructions
+## Installation
 
 1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd IAPchat
-   ```
+```bash
+git clone https://github.com/dth/IAPchat.git
+cd IAPchat
+```
 
-2. Install dependencies:
-   ```bash
-   python3 -m pip install -r requirements.txt
-   ```
+2. Create a virtual environment and activate it:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-3. Set up GitHub API token:
-   - Create a GitHub Personal Access Token with `repo` scope
-   - Set the token as an environment variable:
-     ```bash
-     export GITHUB_TOKEN=your_token_here
-     ```
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-4. Initialize the database:
-   ```bash
-   python3 database.py
-   ```
+4. Set up environment variables:
+```bash
+# List current environment variables
+python cli.py env list
 
-5. Run the server:
-   ```bash
-   python3 server.py
-   ```
+# Set your GitHub token
+python cli.py env set GITHUB_TOKEN your_token_here
 
-6. Access the application:
-   Open your web browser and navigate to `http://localhost:8000`
+# Get a specific variable
+python cli.py env get GITHUB_TOKEN
 
-## Development Status
+# Remove a variable
+python cli.py env unset VARIABLE_NAME
+```
 
-Project started: January 7, 2025
-Status: In Development
+The CLI will:
+- Create `.env` from `.env.example` if it doesn't exist
+- Preserve comments and formatting when updating variables
+- Mask sensitive values when displaying them
+- Validate required variables
 
-## Security Notes
+### GitHub Token Setup
 
-- Store GitHub tokens securely
-- Never commit sensitive information
-- Use environment variables for configuration
-- Implement proper input validation
+1. Go to [GitHub Personal Access Tokens](https://github.com/settings/tokens)
+2. Click "Generate new token"
+3. Give it a descriptive name (e.g., "IAPchat App")
+4. Select the required scopes:
+   - `repo` (Full control of private repositories)
+   - `user` (Read-only access to user information)
+5. Copy the generated token
+6. Paste it in your `.env` file:
+```env
+GITHUB_TOKEN=your_token_here
+```
+
+## Running the Application
+
+1. Start the server:
+```bash
+python server.py
+```
+
+2. Open your web browser and navigate to:
+```
+http://localhost:8000
+```
+
+## Managing Repositories
+
+### Adding a Repository
+
+Use the API endpoint to add a new repository:
+
+```bash
+curl -X POST http://localhost:8000/api/repositories \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "username",
+    "name": "repo-name",
+    "branch": "main",
+    "message_path": "messages"
+  }'
+```
+
+Or use the web interface at `http://localhost:8000/repositories`
+
+### Pushing to Repositories
+
+Use the CLI to push all repositories:
+
+```bash
+# Push with default commit message
+python cli.py push
+
+# Push with custom commit message
+python cli.py push -m "Your commit message here"
+```
+
+The push command will:
+1. Load your GitHub token from `.env`
+2. Read repository configuration
+3. Push all configured repositories to GitHub
+4. Show status for each repository
+
+### Repository Configuration
+
+Each repository in the system requires:
+- Owner (GitHub username or organization)
+- Repository name
+- Branch (defaults to 'main')
+- Message path (defaults to 'messages')
+
+## Development
+
+### Running Tests
+
+```bash
+python test_endpoints.py
+```
+
+### Project Structure
+
+- `server.py`: Main HTTP server and request handling
+- `database.py`: SQLite database operations
+- `multi_repo_handler.py`: GitHub repository management
+- `templates/`: HTML templates
+- `static/`: Static assets (CSS, JS)
+- `config/`: Configuration files
+- `database/`: SQLite database files
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Troubleshooting
+
+### Common Issues
+
+1. **GitHub Token Issues**
+   - Ensure your token has the required scopes
+   - Check that the token is correctly set in `.env`
+   - Verify the token is still valid in GitHub settings
+
+2. **Database Issues**
+   - Check write permissions in the database directory
+   - Ensure SQLite is installed and working
+   - Try deleting and recreating the database file
+
+3. **Repository Access**
+   - Verify repository exists and is accessible
+   - Check repository permissions
+   - Ensure branch name matches configuration
+
+For more help, please open an issue on GitHub.

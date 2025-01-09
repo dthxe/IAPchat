@@ -1,3 +1,6 @@
+# Environment variables
+.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -16,6 +19,7 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -25,22 +29,25 @@ venv/
 ENV/
 
 # Database
-database/chat.db
+database/*.db
+database/*.sqlite
+database/*.sqlite3
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
-# Environment variables
-.env
+# Logs
+*.log
+logs/
 
-# OS generated files
+# Local configuration
+config/*.json
+!config/*.example.json
+
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db

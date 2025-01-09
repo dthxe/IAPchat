@@ -7,11 +7,17 @@ import os
 from urllib.parse import parse_qs, urlparse
 from http import HTTPStatus
 from datetime import datetime
+from database import ChatDatabase
+from multi_repo_handler import MultiRepoHandler
 
 class ChatRequestHandler(http.server.SimpleHTTPRequestHandler):
     """Custom request handler for our chat application"""
 
     def __init__(self, *args, **kwargs):
+        # Initialize database and git handlers
+        self.db = ChatDatabase()
+        self.git = MultiRepoHandler()
+        
         # Set the directory containing static files
         self.static_dir = os.path.join(os.path.dirname(__file__), 'static')
         super().__init__(*args, **kwargs)
@@ -48,6 +54,46 @@ class ChatRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.handle_new_message(message_data)
             except json.JSONDecodeError:
                 self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON data")
+        elif parsed_path.path == '/api/repositories':
+            # Add a new repository
+            post_data = self.rfile.read(content_length)
+            try:
+                repo_data = json.loads(post_data.decode('utf-8'))
+                if not all(k in repo_data for k in ['owner', 'name']):
+                    self.send_error(HTTPStatus.BAD_REQUEST, "Owner and name are required")
+                    return
+                    
+                # Add repository to database and git handler
+                repo_id = self.db.add_repository(repo_data['owner'], repo_data['name'])
+                self.git.add_repository(
+                    owner=repo_data['owner'],
+                    name=repo_data['name'],
+                    branch=repo_data.get('branch', 'main'),
+                    message_path=repo_data.get('message_path', 'messages')
+                )
+                
+                # Send success response
+                response_data = {
+                    'status': 'success',
+                    'repository': {
+                        'id': repo_id,
+                        'owner': repo_data['owner'],
+                        'name': repo_data['name']
+                    }
+                }
+                
+                self.send_response(HTTPStatus.CREATED)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response_data).encode('utf-8'))
+                
+            except json.JSONDecodeError:
+                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON data")
+            except Exception as e:
+                self.send_error(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    f"Error adding repository: {str(e)}"
+                )
         else:
             self.send_error(HTTPStatus.NOT_FOUND, "Resource not found")
 
@@ -90,36 +136,76 @@ class ChatRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def send_messages(self):
         """Send message history as JSON response"""
-        # Placeholder for message retrieval logic
-        messages = []  # This will be replaced with actual message fetching
-        
-        self.send_response(HTTPStatus.OK)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps(messages).encode('utf-8'))
+        try:
+            # Get messages from database
+            messages = self.db.get_messages()
+            
+            self.send_response(HTTPStatus.OK)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(messages).encode('utf-8'))
+        except Exception as e:
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
     def handle_new_message(self, message_data):
         """Handle new message submission"""
-        # Validate message data
-        if 'content' not in message_data or not message_data['content'].strip():
-            self.send_error(HTTPStatus.BAD_REQUEST, "Message content is required")
-            return
+        try:
+            # Validate message data
+            if 'content' not in message_data or not message_data['content'].strip():
+                self.send_error(HTTPStatus.BAD_REQUEST, "Message content is required")
+                return
 
-        # Add timestamp to message
-        message_data['timestamp'] = datetime.now().isoformat()
-        
-        # Placeholder for message storage logic
-        # This will be implemented later with Git and SQLite integration
-        
-        # Send success response
-        self.send_response(HTTPStatus.CREATED)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({'status': 'success'}).encode('utf-8'))
+            # Add timestamp to message
+            timestamp = datetime.now().isoformat()
+            
+            # Store message in database
+            message_id = self.db.add_message(
+                content=message_data['content'],
+                timestamp=timestamp
+            )
+            
+            # Store message in Git repositories
+            commit_hashes = self.git.store_message(
+                message_content=message_data['content'],
+                message_id=message_id
+            )
+            
+            # Update database with commit hashes
+            if commit_hashes:
+                self.db.update_message_commits(message_id, commit_hashes)
+            
+            # Send success response with message details
+            response_data = {
+                'status': 'success',
+                'message': {
+                    'id': message_id,
+                    'content': message_data['content'],
+                    'timestamp': timestamp,
+                    'repositories': commit_hashes
+                }
+            }
+            
+            self.send_response(HTTPStatus.CREATED)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+            
+        except Exception as e:
+            self.send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                f"Error storing message: {str(e)}"
+            )
 
-def run_server(port=8000):
+def run_server(port=8000, db_path="database/chat.db"):
     """Start the HTTP server"""
-    with socketserver.TCPServer(("", port), ChatRequestHandler) as httpd:
+    class ConfiguredHandler(ChatRequestHandler):
+        def __init__(self, *args, **kwargs):
+            self.db = ChatDatabase(db_path)
+            self.git = MultiRepoHandler()
+            self.static_dir = os.path.join(os.path.dirname(__file__), 'static')
+            super(ChatRequestHandler, self).__init__(*args, **kwargs)
+
+    with socketserver.TCPServer(("", port), ConfiguredHandler) as httpd:
         print(f"Server running on port {port}")
         try:
             httpd.serve_forever()
